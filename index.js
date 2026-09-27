@@ -7,11 +7,9 @@ app.use(express.json());
 
 const PORT = process.env.PORT || 10000;
 
-// بيانات بوت تليجرام
 const TELEGRAM_TOKEN = '8925657719:AAF58zGxPyoDYH10xRR-ucVrvLuI4RoJeoI';
 const bot = new TelegramBot(TELEGRAM_TOKEN, { polling: { interval: 3000 } });
 
-// قراءة توكن ديسكورد من متغيرات البيئة بآمان
 const DISCORD_BOT_TOKEN = process.env.DISCORD_BOT_TOKEN;
 const CHANNEL_ID = '1225981886493360240';
 
@@ -28,31 +26,36 @@ client.on('ready', () => {
 });
 
 client.on('messageCreate', async (message) => {
-  // طباعة أي رسالة تصل للتأكد من الاستقبال ورصد الروم
-  console.log(`[Message Received] Channel ID: ${message.channel.id} | Content: ${message.content}`);
-
   if (message.channel.id !== CHANNEL_ID) return;
 
-  let contentText = message.content || '';
+  let fullText = message.content || '';
 
+  // تجميع كافة النصوص والعناوين والحقول من داخل الـ Embeds الخاصة بالويب هوك
   if (message.embeds && message.embeds.length > 0) {
     message.embeds.forEach((embed) => {
-      contentText += ' ' + (embed.title || '') + ' ' + (embed.description || '');
+      if (embed.title) fullText += ' ' + embed.title;
+      if (embed.description) fullText += ' ' + embed.description;
       if (embed.fields) {
-        embed.fields.forEach((f) => {
-          contentText += ` ${f.name} ${f.value}`;
+        embed.fields.forEach((field) => {
+          fullText += ` ${field.name} ${field.value}`;
         });
       }
     });
   }
 
-  if (contentText.includes('أشتراك نيتفلكس') || contentText.includes('اشتراك نيتفلكس')) {
-    console.log('[Match Found] Netflix order detected!');
+  console.log(`[Parsed Text]: ${fullText}`);
 
-    const orderMatch = contentText.match(/#(\d+)/) || contentText.match(/رقم الطلب\s*:?\s*(\d+)/);
+  // البحث عن منتج نيتفلكس بغض النظر عن طريقة كتابته
+  if (fullText.includes('نيتفلكس') || fullText.includes('Netflix')) {
+    console.log('[Match Found] Netflix order detected from Webhook!');
+
+    // استخراج رقم الطلب (سواء كان #1023767 أو رقم مجرد)
+    const orderMatch = fullText.match(/#(\d+)/) || fullText.match(/رقم الطلب\s*:?\s*(\d+)/);
     const orderId = orderMatch ? orderMatch[1] : 'Unknown';
 
     console.log(`[Discord] Processing Order ID: ${orderId}`);
+
+    // هنا سيتم لاحقاً إرسال كود النيتفلكس عبر تليجرام تلقائياً
   }
 });
 
