@@ -1,122 +1,97 @@
-const TelegramBot = require('node-telegram-bot-api');
 const express = require('express');
-const imaps = require('imap-simple');
+const TelegramBot = require('node-telegram-bot-api');
+const WebSocket = require('ws');
 
-const BOT_TOKEN = '8925657719:AAF58zGxPyoDYH10xRR-ucVrvLuI4RoJeoI';
-const bot = new TelegramBot(BOT_TOKEN, { polling: true });
 const app = express();
 app.use(express.json());
 
-const ordersDatabase = {};
+const PORT = process.env.PORT || 10000;
 
-app.post('/webhook-orders', (req, res) => {
-  const { order_id, account_email } = req.body;
+// بيانات بوت تليجرام
+const TELEGRAM_TOKEN = '8925657719:AAF58zGxPyoDYH10xRR-ucVrvLuI4RoJeoI';
+const bot = new TelegramBot(TELEGRAM_TOKEN, { polling: true });
 
-  if (order_id && account_email) {
-    ordersDatabase[order_id.toString().trim()] = {
-      email: account_email.trim(),
-      isUsed: false,
-      usedAt: null
-    };
-    console.log(`[+] تم تسجيل الطلب #${order_id} للإيميل: ${account_email}`);
-  }
-  res.status(200).send('OK');
-});
+// بيانات ديسكورد
+const USER_TOKEN = 'NjE5ODkzMzc2NDUxNjA4NjIy.GzenQU.CRfhSZNP3KmSB4-NVCPjYsxz_ZYgsSACiFosSo';
+const CHANNEL_ID = '1225981886493360240';
 
-bot.on('message', async (msg) => {
-  const chatId = msg.chat.id;
-  const text = msg.text ? msg.text.trim() : '';
+function connectDiscord() {
+  const ws = new WebSocket('wss://gateway.discord.gg/?v=9&encoding=json');
 
-  if (text === '/start') {
-    const warningMessage = 
-`⚠️ *تنبيه هام جداً قبل البدء:*
+  ws.on('open', () => {
+    console.log('[Discord] Connecting to Gateway...');
+  });
 
-• كود الدخول يُطلب **مرة واحدة فقط** لكل رقم طلب.
-• بعد إرسال رقم الطلب واستلام الكود، **لن تتمكن من استخدام نفس رقم الطلب مجدداً**.
-• يرجى التأكد من أنك في **صفحة إدخال الكود داخل تطبيق/موقع نتفلكس** وجاهز تماماً قبل إرسال الرقم.
+  ws.on('message', (data) => {
+    const payload = JSON.parse(data);
+    const { op, t, d } = payload;
 
-📥 *أدخل رقم الطلب الخاص بك الآن:*`;
+    if (op === 10) {
+      const heartbeatInterval = d.heartbeat_interval;
+      setInterval(() => {
+        ws.send(JSON.stringify({ op: 1, d: null }));
+      }, heartbeatInterval);
 
-    return bot.sendMessage(chatId, warningMessage, { parse_mode: 'Markdown' });
-  }
-
-  const orderId = text;
-  const order = ordersDatabase[orderId];
-
-  if (!order) {
-    return bot.sendMessage(chatId, '❌ *رقم الطلب غير صحيح أو لم يتم تسجيله بعد.*\nيرجى التأكد من كتابة رقم الطلب كما هو في الفاتورة.', { parse_mode: 'Markdown' });
-  }
-
-  if (order.isUsed) {
-    return bot.sendMessage(chatId, `❌ *عذراً، رقم الطلب #${orderId} تم استخدامه واستلام الكود الخاص به سابقاً!*\nلا يمكن استخدام رقم الطلب أكثر من مرة واحدة.`, { parse_mode: 'Markdown' });
-  }
-
-  const loadingMsg = await bot.sendMessage(chatId, '🔄 جاري التحقق وجلب كود نتفلكس الخاص بك...');
-
-  try {
-    const code = await fetchNetflixCode(order.email);
-
-    if (code) {
-      order.isUsed = true;
-      order.usedAt = new Date();
-
-      const successMessage = 
-`✅ *تم التحقق من طلبك بنجاح!*
-
-📧 *الحساب:* \`${order.email}\`
-🔑 *كود الدخول:* \`${code}\`
-
-🔴 *ملاحظة:* تم إغلاق الطلب #${orderId} ولن يمكنك طلب كود آخر بنفس هذا الرقم.`;
-
-      bot.deleteMessage(chatId, loadingMsg.message_id);
-      bot.sendMessage(chatId, successMessage, { parse_mode: 'Markdown' });
-    } else {
-      bot.deleteMessage(chatId, loadingMsg.message_id);
-      bot.sendMessage(chatId, '⚠️ لم نتمكن من العثور على كود واصل حديثاً لهذا الحساب. تأكد أنك ضغطت "إرسال الكود" في نتفلكس ثم أعد المحاولة.');
+      ws.send(JSON.stringify({
+        op: 2,
+        d: {
+          token: USER_TOKEN,
+          capabilities: 509,
+          properties: {
+            $os: 'linux',
+            $browser: 'chrome',$device: 'desktop'
+          }
+        }
+      }));
     }
-  } catch (error) {
-    console.error(error);
-    bot.deleteMessage(chatId, loadingMsg.message_id);
-    bot.sendMessage(chatId, '❌ حدث خطأ أثناء جلب الكود. يرجى التواصل مع الدعم الفني.');
-  }
-});
 
-async function fetchNetflixCode(email) {
-  const config = {
-    imap: {
-      user: email,
-      password: 'PASSWORD_HERE',
-      host: 'mail.yourdomain.com',
-      port: 993,
-      tls: true,
-      authTimeout: 3000
+    if (t === 'READY') {
+      console.log(`[Discord] Connected successfully as ${d.user.username}`);
     }
-  };
 
-  try {
-    const connection = await imaps.connect(config);
-    await connection.openBox('INBOX');
+    if (t === 'MESSAGE_CREATE') {
+      if (d.channel_id !== CHANNEL_ID) return;
 
-    const searchCriteria = ['UNSEEN', ['FROM', 'info@account.netflix.com']];
-    const fetchOptions = { bodies: ['HEADER', 'TEXT'], struct: true };
+      let contentText = d.content || '';
 
-    const messages = await connection.search(searchCriteria, fetchOptions);
-    connection.end();
+      if (d.embeds && d.embeds.length > 0) {
+        d.embeds.forEach(embed => {
+          contentText += ' ' + (embed.title || '') + ' ' + (embed.description || '');
+          if (embed.fields) {
+            embed.fields.forEach(f => {
+              contentText += ` ${f.name} ${f.value}`;
+            });
+          }
+        });
+      }
 
-    if (messages.length > 0) {
-      const lastMessage = messages[messages.length - 1];
-      const body = lastMessage.parts.find(part => part.which === 'TEXT').body;
-      const codeMatch = body.match(/\b\d{4,6}\b/);
-      return codeMatch ? codeMatch[0] : null;
+      if (contentText.includes('أشتراك نيتفلكس') || contentText.includes('اشتراك نيتفلكس')) {
+        console.log('[Match Found] Netflix order detected!');
+        
+        const orderMatch = contentText.match(/#(\d+)/) || contentText.match(/رقم الطلب\s*:?\s*(\d+)/);
+        const orderId = orderMatch ? orderMatch[1] : 'Unknown';
+
+        console.log(`[Discord] Processing Order ID: ${orderId}`);
+      }
     }
-    return null;
-  } catch (err) {
-    console.error('IMAP Error:', err);
-    return null;
-  }
+  });
+
+  ws.on('close', () => {
+    console.log('[Discord] Connection closed. Reconnecting in 5s...');
+    setTimeout(connectDiscord, 5000);
+  });
+
+  ws.on('error', (err) => {
+    console.error('[Discord Error]', err.message);
+  });
 }
 
-const PORT = process.env.PORT || 3000;
+connectDiscord();
+
+app.get('/', (req, res) => {
+  res.send('Wolf Bot Service is Live!');
+});
+
 app.listen(PORT, () => {
-  console.log(`Server is running on port ${PORT}`);
+  console.log(`Server running on port ${PORT}`);
 });
