@@ -7,12 +7,12 @@ app.use(express.json());
 
 const PORT = process.env.PORT || 10000;
 
-// بيانات بوت تليجرام
+// بيانات بوت تليجرام (تم إيقاف الـ polling المتعدد لتجنب تعارض 409)
 const TELEGRAM_TOKEN = '8925657719:AAF58zGxPyoDYH10xRR-ucVrvLuI4RoJeoI';
-const bot = new TelegramBot(TELEGRAM_TOKEN, { polling: true });
+const bot = new TelegramBot(TELEGRAM_TOKEN, { polling: { interval: 2000, autoStart: true } });
 
-// توكن بوت ديسكورد الرسمي وآيدي الروم
-const DISCORD_BOT_TOKEN = 'MTU1Mzc2Njg5ODYyMDE3NDQ0Nw.G2oTTC.4hCCLqcd9fCzBxkLMu--yrroUxIiTiMW74QtIE';
+// قراءة توكن ديسكورد حصرياً من متغيرات البيئة في Render
+const DISCORD_BOT_TOKEN = process.env.DISCORD_BOT_TOKEN;
 const CHANNEL_ID = '1225981886493360240';
 
 const client = new Client({
@@ -53,9 +53,13 @@ client.on('messageCreate', async (message) => {
   }
 });
 
-client.login(DISCORD_BOT_TOKEN).catch((err) => {
-  console.error('[Discord Error]', err.message);
-});
+if (DISCORD_BOT_TOKEN) {
+  client.login(DISCORD_BOT_TOKEN).catch((err) => {
+    console.error('[Discord Error]', err.message);
+  });
+} else {
+  console.error('[Discord Error] DISCORD_BOT_TOKEN is missing in Environment Variables!');
+}
 
 app.get('/', (req, res) => {
   res.send('Wolf Bot Service is Live!');
