@@ -7,11 +7,11 @@ app.use(express.json());
 
 const PORT = process.env.PORT || 10000;
 
-// بيانات بوت تليجرام (تم إيقاف الـ polling المتعدد لتجنب تعارض 409)
+// بيانات بوت تليجرام
 const TELEGRAM_TOKEN = '8925657719:AAF58zGxPyoDYH10xRR-ucVrvLuI4RoJeoI';
-const bot = new TelegramBot(TELEGRAM_TOKEN, { polling: { interval: 2000, autoStart: true } });
+const bot = new TelegramBot(TELEGRAM_TOKEN, { polling: { interval: 3000 } });
 
-// قراءة توكن ديسكورد حصرياً من متغيرات البيئة في Render
+// قراءة توكن ديسكورد من متغيرات البيئة بآمان
 const DISCORD_BOT_TOKEN = process.env.DISCORD_BOT_TOKEN;
 const CHANNEL_ID = '1225981886493360240';
 
@@ -28,6 +28,9 @@ client.on('ready', () => {
 });
 
 client.on('messageCreate', async (message) => {
+  // طباعة أي رسالة تصل للتأكد من الاستقبال ورصد الروم
+  console.log(`[Message Received] Channel ID: ${message.channel.id} | Content: ${message.content}`);
+
   if (message.channel.id !== CHANNEL_ID) return;
 
   let contentText = message.content || '';
