@@ -7,9 +7,11 @@ app.use(express.json());
 
 const PORT = process.env.PORT || 10000;
 
+// بيانات تليجرام
 const TELEGRAM_TOKEN = '8925657719:AAF58zGxPyoDYH10xRR-ucVrvLuI4RoJeoI';
 const bot = new TelegramBot(TELEGRAM_TOKEN, { polling: { interval: 3000 } });
 
+// بيانات ديسكورد
 const DISCORD_BOT_TOKEN = process.env.DISCORD_BOT_TOKEN;
 const CHANNEL_ID = '1225981886493360240';
 
@@ -21,16 +23,20 @@ const client = new Client({
   ],
 });
 
+// قاعدة بيانات مؤقتة لتخزين الطلبات والأكواد ووسائط التسليم
+const ordersDatabase = new Map(); // مفتاحها orderId
+const deliveredOrders = new Set(); // لحفظ الطلبات التي تم تسليم أكودها مسبقاً
+
 client.on('ready', () => {
   console.log(`[Discord] Connected successfully as Bot: ${client.user.tag}`);
 });
 
+// استقبال رسائل ديسكورد وحفظ الطلبات وأكوادها تلقائياً
 client.on('messageCreate', async (message) => {
   if (message.channel.id !== CHANNEL_ID) return;
 
   let fullText = message.content || '';
 
-  // تجميع كافة النصوص والعناوين والحقول من داخل الـ Embeds الخاصة بالويب هوك
   if (message.embeds && message.embeds.length > 0) {
     message.embeds.forEach((embed) => {
       if (embed.title) fullText += ' ' + embed.title;
@@ -43,19 +49,70 @@ client.on('messageCreate', async (message) => {
     });
   }
 
-  console.log(`[Parsed Text]: ${fullText}`);
+  // استخراج رقم الطلب
+  const orderMatch = fullText.match(/#(\d+)/) || fullText.match(/رقم الطلب\s*:?\s*(\d+)/);
+  if (orderMatch) {
+    const orderId = orderMatch[1];
+    
+    // استخراج اسم العميل ونوع المنتج (افتراضي أو من النص)
+    const customerMatch = fullText.match(/العميل\s*([^\nأ-ي]*[\u0600-\u06FF\s]+)/);
+    const customerName = customerMatch ? customerMatch[1].trim() : 'عزيزنا العميل';
+    
+    let productType = 'اشتراك رقمي';
+    if (fullText.includes('نيتفلكس') || fullText.includes('Netflix')) productType = 'اشتراك نيتفلكس (Netflix)';
+    if (fullText.includes('دزني') || fullText.includes('Disney')) productType = 'اشتراك ديزني بلس (Disney+)';
 
-  // البحث عن منتج نيتفلكس بغض النظر عن طريقة كتابته
-  if (fullText.includes('نيتفلكس') || fullText.includes('Netflix')) {
-    console.log('[Match Found] Netflix order detected from Webhook!');
+    // افتراض كود تجريبي يتم جلبه أو ربطه (يمكنك تعديل الكود حسب ما يرسله المتجر)
+    const digitalCode = 'EMAIL: account@theeb.com | PASS: Theeb2026'; 
 
-    // استخراج رقم الطلب (سواء كان #1023767 أو رقم مجرد)
-    const orderMatch = fullText.match(/#(\d+)/) || fullText.match(/رقم الطلب\s*:?\s*(\d+)/);
-    const orderId = orderMatch ? orderMatch[1] : 'Unknown';
+    ordersDatabase.set(orderId, {
+      customerName,
+      productType,
+      digitalCode,
+      rawText: fullText
+    });
 
-    console.log(`[Discord] Processing Order ID: ${orderId}`);
+    console.log(`[Saved Order] ID: ${orderId} | Customer: ${customerName} | Product: ${productType}`);
+  }
+});
 
-    // هنا سيتم لاحقاً إرسال كود النيتفلكس عبر تليجرام تلقائياً
+// تفاعل بوت تليجرام مع العملاء
+bot.on('message', async (msg) => {
+  const chatId = msg.chat.id;
+  const text = msg.text ? msg.text.trim() : '';
+
+  if (text === '/start') {
+    bot.sendMessage(chatId, 
+      `🐺 **أهلاً بك في متجر الذيب للاشتراكات الرقمية!**\n\n` +
+      `الرجاء إرسال **رقم طلبك** فقط (مثال: \`1161565\`) لاستلام تفاصيل اشتراكك.\n\n` +
+      `⚠️ **تنبيه هام:** كود الاشتراك يُرسل **مرة واحدة فقط**، لذا احفظه في مكان آمن ولاتشاركه مع أحد.`
+    );
+    return;
+  }
+
+  // التحقق إذا كان المرسل أدخل رقم طلب
+  if (/^\d+$/.test(text)) {
+    const orderId = text;
+
+    if (deliveredOrders.has(orderId)) {
+      bot.sendMessage(chatId, `❌ عذراً، هذا الطلب (#${orderId}) تم تسليم كوده مسبقاً ولا يمكن إعادته حفاظاً على أمان حسابك.`);
+      return;
+    }
+
+    const orderData = ordersDatabase.get(orderId);
+    if (orderData) {
+      deliveredOrders.add(orderId); // تسجيل أنه تم تسليمه
+
+      bot.sendMessage(chatId, 
+        `✅ **تم التحقق من طلبك بنجاح يا ${orderData.customerName}!**\n\n` +
+        `📦 **المنتج:** ${orderData.productType}\n` +
+        `🔑 **بيانات حسابك / الكود:**\n\`${orderData.digitalCode}\`\n\n` +
+        `🙏 شكراً لثقتك بمتجر الذيب، نتمنى لك مشاهدة ممتعة!`
+      );
+      console.log(`[Telegram Delivered] Order #${orderId} sent to chat ${chatId}`);
+    } else {
+      bot.sendMessage(chatId, `⚠️ عذراً، لم يتم العثور على طلب برقم **#${orderId}** في النظام، تأكد من الرقم أو انتظر حتى يتم معالجة طلبك.`);
+    }
   }
 });
 
@@ -68,7 +125,7 @@ if (DISCORD_BOT_TOKEN) {
 }
 
 app.get('/', (req, res) => {
-  res.send('Wolf Bot Service is Live!');
+  res.send('Wolf Bot System is Live!');
 });
 
 app.listen(PORT, () => {
