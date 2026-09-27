@@ -9,7 +9,10 @@ const PORT = process.env.PORT || 10000;
 
 // بيانات تليجرام
 const TELEGRAM_TOKEN = '8925657719:AAF58zGxPyoDYH10xRR-ucVrvLuI4RoJeoI';
+
+// تنظيف أي ويبهوك قديم معلق في تليجرام لضمان عدم تداخل الرسائل
 const bot = new TelegramBot(TELEGRAM_TOKEN, { polling: { interval: 3000 } });
+bot.deleteWebHook().catch(() => {});
 
 // بيانات ديسكورد
 const DISCORD_BOT_TOKEN = process.env.DISCORD_BOT_TOKEN;
@@ -59,10 +62,10 @@ client.on('messageCreate', async (message) => {
     const customerName = customerMatch ? customerMatch[1].trim() : 'عزيزنا العميل';
     
     let productType = 'اشتراك رقمي';
-    if (fullText.includes('نيتفلكس') || fullText.includes('Netflix')) productType = 'اشتراك نيتفلكس (Netflix)';
-    if (fullText.includes('دزني') || fullText.includes('Disney')) productType = 'اشتراك ديزني بلس (Disney+)';
+    if (fullText.includes('نيتفلكس') || fullText.includes('Netflix')) productType = 'اشتراك نيتفلكس (Netflix) 🎬';
+    if (fullText.includes('دزني') || fullText.includes('Disney')) productType = 'اشتراك ديزني بلس (Disney+) 🌟';
 
-    // كود الاشتراك التجريبي (يمكنك تعديله لاحقاً)
+    // كود الاشتراك التجريبي
     const digitalCode = 'EMAIL: account@theeb.com | PASS: Theeb2026'; 
 
     ordersDatabase.set(orderId, {
@@ -75,18 +78,20 @@ client.on('messageCreate', async (message) => {
   }
 });
 
-// تفاعل بوت تليجرام (نص صافي بدون أقواس مزعجة أو اشتراك إجباري)
+// تفاعل بوت تليجرام مع الإيموجيات والرسائل المرتبة
 bot.on('message', async (msg) => {
   const chatId = msg.chat.id;
   const text = msg.text ? msg.text.trim() : '';
 
-  // تجاهل أوامر البوت القديمة أو رسائل القناة إن وجدت
+  // تجاهل أي رسائل فارغة
+  if (!text) return;
+
   if (text.startsWith('/start')) {
     bot.sendMessage(chatId, 
-      `أهلاً بك في متجر الذيب للاشتراكات الرقمية!\n\n` +
-      `الرجاء إرسال رقم طلبك فقط (مثال: 1161565) لاستلام تفاصيل اشتراكك.\n\n` +
-      `تنبيه هام: كود الاشتراك يُرسل مرة واحدة فقط، لذا احفظه في مكان آمن ولاتشاركه مع أحد.`
-    );
+      `🐺 **أهلاً بك في متجر الذيب للاشتراكات الرقمية!** ⚡\n\n` +
+      `الرجاء إرسال **رقم طلبك** فقط (مثال: \`1161565\`) لاستلام تفاصيل اشتراكك بكل سهولة 📦.\n\n` +
+      `⚠️ **تنبيه هام:** كود الاشتراك يُرسل **مرة واحدة فقط**، لذا احفظه في مكان آمن ولاتشاركه مع أحد 🔒.`
+    , { parse_mode: 'Markdown' });
     return;
   }
 
@@ -95,7 +100,11 @@ bot.on('message', async (msg) => {
     const orderId = text;
 
     if (deliveredOrders.has(orderId)) {
-      bot.sendMessage(chatId, `عذراً، هذا الطلب (#${orderId}) تم تسليم كوده مسبقاً ولا يمكن إعادته حفاظاً على أمان حسابك.`);
+      bot.sendMessage(chatId, 
+        `❌ **عذراً يا غالي!**\n\n` +
+        `هذا الطلب رقم **(#${orderId})** تم تسليم كوده مسبقاً ولا يمكن إعادته حفاظاً على أمان حسابك 🛡️.\n\n` +
+        `💬 إذا تواجهك أي مشكلة، يسعدنا خدمتك بالتواصل مع دعم الواتساب.`
+      , { parse_mode: 'Markdown' });
       return;
     }
 
@@ -104,14 +113,17 @@ bot.on('message', async (msg) => {
       deliveredOrders.add(orderId);
 
       bot.sendMessage(chatId, 
-        `تم التحقق من طلبك بنجاح يا ${orderData.customerName}!\n\n` +
-        `المنتج: ${orderData.productType}\n` +
-        `بيانات حسابك / الكود:\n${orderData.digitalCode}\n\n` +
-        `شكراً لثقتك بمتجر الذيب، نتمنى لك مشاهدة ممتعة!`
-      );
+        `🎉 **تم التحقق من طلبك بنجاح، نورتنا يا ${orderData.customerName}!** 🌟\n\n` +
+        `📦 **المنتج:** ${orderData.productType}\n` +
+        `🔑 **بيانات حسابك / الكود:**\n\`${orderData.digitalCode}\`\n\n` +
+        `🙏 شكراً لثقتك الدائمة بـ **متجر الذيب**، نتمنى لك مشاهدة ممتعة وطيبة! 🍿`
+      , { parse_mode: 'Markdown' });
       console.log(`[Telegram Delivered] Order #${orderId} sent to chat ${chatId}`);
     } else {
-      bot.sendMessage(chatId, `عذراً، لم يتم العثور على طلب برقم #${orderId} في النظام، تأكد من الرقم أو انتظر حتى يكتمل الطلب في ديسكورد.`);
+      bot.sendMessage(chatId, 
+        `⚠️ **عذراً، لم نتمكن من العثور على طلب بهذا الرقم (#${orderId})!**\n\n` +
+        `🔍 تأكد من كتابة رقم الطلب بشكل صحيح، أو انتظر لحظات حتى يكتمل النظام، أو تواصل معنا عبر دعم الواتساب للمساعدة الفورية 💬.`
+      , { parse_mode: 'Markdown' });
     }
   }
 });
