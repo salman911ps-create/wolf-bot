@@ -1,6 +1,6 @@
 const express = require('express');
 const TelegramBot = require('node-telegram-bot-api');
-const WebSocket = require('ws');
+const { Client, GatewayIntentBits } = require('discord.js');
 
 const app = express();
 app.use(express.json());
@@ -11,82 +11,51 @@ const PORT = process.env.PORT || 10000;
 const TELEGRAM_TOKEN = '8925657719:AAF58zGxPyoDYH10xRR-ucVrvLuI4RoJeoI';
 const bot = new TelegramBot(TELEGRAM_TOKEN, { polling: true });
 
-// بيانات ديسكورد
-const USER_TOKEN = 'NjE5ODkzMzc2NDUxNjA4NjIy.GzenQU.CRfhSZNP3KmSB4-NVCPjYsxz_ZYgsSACiFosSo';
+// توكن بوت ديسكورد الرسمي وآيدي الروم
+const DISCORD_BOT_TOKEN = 'MTU1Mzc2Njg5ODYyMDE3NDQ0Nw.G2oTTC.4hCCLqcd9fCzBxkLMu--yrroUxIiTiMW74QtIE';
 const CHANNEL_ID = '1225981886493360240';
 
-function connectDiscord() {
-  const ws = new WebSocket('wss://gateway.discord.gg/?v=9&encoding=json');
+const client = new Client({
+  intents: [
+    GatewayIntentBits.Guilds,
+    GatewayIntentBits.GuildMessages,
+    GatewayIntentBits.MessageContent,
+  ],
+});
 
-  ws.on('open', () => {
-    console.log('[Discord] Connecting to Gateway...');
-  });
+client.on('ready', () => {
+  console.log(`[Discord] Connected successfully as Bot: ${client.user.tag}`);
+});
 
-  ws.on('message', (data) => {
-    const payload = JSON.parse(data);
-    const { op, t, d } = payload;
+client.on('messageCreate', async (message) => {
+  if (message.channel.id !== CHANNEL_ID) return;
 
-    if (op === 10) {
-      const heartbeatInterval = d.heartbeat_interval;
-      setInterval(() => {
-        ws.send(JSON.stringify({ op: 1, d: null }));
-      }, heartbeatInterval);
+  let contentText = message.content || '';
 
-      ws.send(JSON.stringify({
-        op: 2,
-        d: {
-          token: USER_TOKEN,
-          capabilities: 509,
-          properties: {
-            $os: 'linux',
-            $browser: 'chrome',$device: 'desktop'
-          }
-        }
-      }));
-    }
-
-    if (t === 'READY') {
-      console.log(`[Discord] Connected successfully as ${d.user.username}`);
-    }
-
-    if (t === 'MESSAGE_CREATE') {
-      if (d.channel_id !== CHANNEL_ID) return;
-
-      let contentText = d.content || '';
-
-      if (d.embeds && d.embeds.length > 0) {
-        d.embeds.forEach(embed => {
-          contentText += ' ' + (embed.title || '') + ' ' + (embed.description || '');
-          if (embed.fields) {
-            embed.fields.forEach(f => {
-              contentText += ` ${f.name} ${f.value}`;
-            });
-          }
+  if (message.embeds && message.embeds.length > 0) {
+    message.embeds.forEach((embed) => {
+      contentText += ' ' + (embed.title || '') + ' ' + (embed.description || '');
+      if (embed.fields) {
+        embed.fields.forEach((f) => {
+          contentText += ` ${f.name} ${f.value}`;
         });
       }
+    });
+  }
 
-      if (contentText.includes('أشتراك نيتفلكس') || contentText.includes('اشتراك نيتفلكس')) {
-        console.log('[Match Found] Netflix order detected!');
-        
-        const orderMatch = contentText.match(/#(\d+)/) || contentText.match(/رقم الطلب\s*:?\s*(\d+)/);
-        const orderId = orderMatch ? orderMatch[1] : 'Unknown';
+  if (contentText.includes('أشتراك نيتفلكس') || contentText.includes('اشتراك نيتفلكس')) {
+    console.log('[Match Found] Netflix order detected!');
 
-        console.log(`[Discord] Processing Order ID: ${orderId}`);
-      }
-    }
-  });
+    const orderMatch = contentText.match(/#(\d+)/) || contentText.match(/رقم الطلب\s*:?\s*(\d+)/);
+    const orderId = orderMatch ? orderMatch[1] : 'Unknown';
 
-  ws.on('close', () => {
-    console.log('[Discord] Connection closed. Reconnecting in 5s...');
-    setTimeout(connectDiscord, 5000);
-  });
+    console.log(`[Discord] Processing Order ID: ${orderId}`);
+  }
+});
 
-  ws.on('error', (err) => {
-    console.error('[Discord Error]', err.message);
-  });
-}
-
-connectDiscord();
+client.login(DISCORD_BOT_TOKEN).catch((err) => {
+  console.error('[Discord Error]', err.message);
+});
 
 app.get('/', (req, res) => {
   res.send('Wolf Bot Service is Live!');
